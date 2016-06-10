@@ -1,0 +1,452 @@
+﻿'MILESTAG GRENADE
+'Code Version: 07  MilesTag DIY Protocol
+'Words Used = 609
+'Revision Date: 22 Jul 2010
+'Written for PICBasic Pro Compiler version 2.50 (www.melabs.com)
+'Processor=PIC16F684  (MCLR=OFF; OSC=INTRC)
+
+'Player_ID 53 = Bazooka "ZOOKA"
+'Player_ID 54 = Rocket "ROCKT"
+'Player_ID 55 = Grenade "GRNDE"
+'Player_ID 56 = Claymore "CLYMR"
+'Player_ID 57 = Mine "MINE "
+'Player_ID 58 = Bomb "BOMB "
+'Player_ID 59 = Nuke "NUKE "
+
+
+	DEFINE OSC 8
+'*************************************************************	
+'*************************************************************
+'******************** DEFINE CONSTANTS ***********************
+'*************************************************************
+'*************************************************************
+mtheader    CON 2400
+mtbit0      CON 600
+mtbit1      CON 1200
+mtspace     CON 600
+
+'*************************************************************
+'*************************************************************
+'******************** DEFINE VARIABLES ***********************
+'*************************************************************
+'*************************************************************
+
+bit_counter 		VAR BYTE
+g_type				VAR BYTE
+damage				VAR BYTE
+databyte 			VAR BYTE	
+databyte1			VAR BYTE
+health          	VAR BYTE
+main_loop_timer 	VAR WORD
+message         	VAR BYTE
+message_ID			VAR BYTE
+protocol			VAR BYTE
+temp				VAR BYTE
+temp3				VAR WORD
+blast_ID			VAR BYTE
+
+'*************************************************************
+'*************************************************************
+'******************** PIN ASSIGNMENTS ************************
+'*************************************************************
+'*************************************************************
+Symbol trigger		= PORTA.0			'
+Symbol dipsw8 		= PORTA.1			'
+Symbol dipsw4 		= PORTA.2			'
+Symbol dipsw2		= PORTA.4			'
+Symbol dipsw1		= PORTA.5			'
+
+Symbol tone		    = PORTC.4			'Piezo indicator
+Symbol statusLED	= PORTC.0			'status LED indicator 
+Symbol hitled		= PORTC.2			'VISIBLE LEDs
+Symbol mod_out 		= PORTC.5         	'INFRARED LEDs
+
+	
+'*************************************************************
+'*************************************************************
+'******************** INITIALIZATION *************************
+'*************************************************************
+'*************************************************************
+initialize:
+    CLEAR
+	OSCCON = %01111000
+	CMCON0 = 7				'turn off comparators
+	ANSEL = 0
+	
+	PR2 = 35				'PWM Period (40K=49, 56K=35) (35 to 55)
+	CCPR1L = 15				'PWM Duty Cycle (1 to 15)
+	T2CON = 4				'Timer2 = ON; Prescale = 1:1
+	CCP1CON = 0				'PWM module off
+	OPTION_REG = %01111111		'Turn PortA weak pull-ups
+	
+	TRISA = %111111    		'set PortA directions
+	WPUA =  %110111			'enable weak pull-ups PortA
+	IOCA =  %000000			'disable PORTA.0 Int On Change
+
+	TRISC = %000000    		'set PortC directions
+
+	PORTA = %000000
+	PORTC = %000000    		'
+	
+	INPUT trigger
+	OUTPUT mod_out
+	OUTPUT hitled
+
+'---------------------------------------------------------------------------   
+read_config:
+	g_type = 0
+		
+	IF dipsw1 = 0 THEN
+		g_type.0 = 1
+	ENDIF
+
+	IF dipsw2 = 0 THEN
+		g_type.1 = 1
+	ENDIF
+
+	IF dipsw4 = 0 THEN
+		g_type.2 = 1
+	ENDIF
+	
+   	IF dipsw8 = 1 THEN
+   		PR2 = 49		'ON=40K, OFF=56K
+   	ENDIF
+
+	
+start:
+    health = 10
+
+'*************************************************************	
+'*************************************************************
+'********************* MAIN PROGRAM **************************
+'*************************************************************
+'*************************************************************
+wait_trigger:
+	temp = 0
+	health = health + 5
+	IF health = 55 THEN
+	   health = 10
+    ENDIF
+	PAUSE 100
+	IF trigger = 1 THEN wait_trigger
+
+	FOR temp = 1 to 15				'hold 3 seconds to charge
+		IF trigger = 1 THEN wait_trigger
+		PAUSE 200
+	NEXT temp
+	
+charge_beep:
+	HIGH tone
+	PAUSE 20
+	LOW tone
+	
+	PAUSE 40
+	
+	HIGH tone
+	PAUSE 20
+	LOW tone
+	
+	PAUSE 40
+	
+	HIGH tone
+	PAUSE 20
+	LOW tone
+	
+	PAUSE 40	
+
+wait_release:
+	PAUSE 100
+	IF trigger = 0 THEN wait_release
+
+countdown:
+	temp3 = 500
+	FOR temp = 1 to 15
+		HIGH tone
+		PAUSE 20
+		LOW tone
+		PAUSE temp3
+		temp3 = temp3 - 30
+	NEXT temp
+		
+	HIGH tone
+	PAUSE 500
+	LOW tone
+
+detonate:
+    IF g_type = 0 THEN
+        GOSUB kill_grenade
+    ENDIF 
+
+    IF g_type = 1 THEN
+        GOSUB team_1_grenade
+    ENDIF 
+    
+    IF g_type = 2 THEN
+        GOSUB team_2_grenade
+    ENDIF 
+    
+    IF g_type = 3 THEN
+        GOSUB team_3_grenade
+    ENDIF
+    
+    IF g_type = 4 THEN
+        GOSUB team_4_grenade
+    ENDIF 
+    
+    IF g_type = 5 THEN
+        GOSUB stun_grenade
+    ENDIF
+    
+    IF g_type = 6 THEN
+        GOSUB crazy_grenade
+    ENDIF
+
+    IF g_type = 7 THEN
+        GOSUB kill_grenade
+    ENDIF          
+
+	high hitled            'FLASH VISIBLE LEDS
+	pause 30
+	low hitled
+	
+	SLEEP 5                'sleep 5 seconds
+
+
+finder_loop:
+	
+	HIGH piezo
+	HIGH hitled
+	PAUSE 75
+	LOW tone
+	LOW hitled
+
+	FOR temp = 1 to 250
+		Pause 10
+		IF trigger = 0 THEN escape_finder
+	NEXT temp
+	GoTo 	finder_loop
+
+escape_finder:
+	HIGH tone
+	PAUSE 1000
+	LOW tone
+
+	SLEEP 20           'sleep 20 seconds
+
+	HIGH tone
+	PAUSE 200
+	LOW TONE
+	
+	PAUSE 200
+	
+	HIGH tone
+	PAUSE 200
+	LOW TONE
+
+	GOTO wait_trigger	
+
+
+
+'*************************************************************	
+'*************************************************************
+'********************** SUBROUTINES **************************
+'*************************************************************
+'*************************************************************
+send_blast:					'send 24 bits 
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+blast_first_byte:
+    databyte = 55     		'packet_ID=0 (shot); playerID = 55 (GRNDE) MT         
+	GoSub send_byte
+
+blast_second_byte:
+	databyte = blast_ID			'team; damage 			      
+	GoSub send_byte_short
+
+	Return
+
+'-----------------------------------------------------------
+send_message:					'send 24 bits 
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+message_first_byte:
+	databyte = message_ID | %10000000     		'(packet_ID=1; sys_msg)  
+	GoSub send_byte
+
+message_second_byte:
+	databyte = message 			      
+	GoSub send_byte
+
+message_third_byte:
+   	databyte = 232
+   	GoSub send_byte
+	
+	Return
+
+'-----------------------------------------------------------
+send_byte:						'send 8 bits (databyte)
+	For bit_counter = 1 TO 8	'send 8 data bits MSB first
+        	pauseus mtspace     'send space -- space between data pulses  
+		IF databyte.7 = 1 Then trans1
+			CCP1CON = 12		'send zero
+            	pauseus mtbit0  
+			CCP1CON = 0
+			@ bcf PORTC, 5
+			@ rlf	_databyte,F		
+		GoTo bypassx    
+trans1:
+			CCP1CON = 12		'send one
+            	pauseus mtbit1
+			CCP1CON = 0	
+			@ bcf PORTC, 5	
+			@ rlf	_databyte,F		
+bypassx:
+	Next bit_counter
+	
+	Return
+
+'-----------------------------------------
+'-----------------------------------------
+send_byte_short:					'send 6 bits (databyte)
+	For bit_counter = 1 TO 6			'send 6 data bits MSB first
+        	pauseus mtspace    			'send space   
+		IF databyte.5 = 1 Then trans1_short	'read from bit 5
+			CCP1CON = 12			'send zero
+            	pauseus mtbit0  
+			CCP1CON = 0
+			@ bcf PORTC, 5
+			@ rlf	_databyte,F		'databyte << 1		
+		GoTo bypassx_short
+trans1_short:	
+			CCP1CON = 12			'send one
+            	pauseus mtbit1
+			CCP1CON = 0	
+			@ bcf PORTC, 5	
+			@ rlf	_databyte,F		
+bypassx_short:
+	Next bit_counter
+	
+    	
+	Return	
+'-------------------------------------------------------
+
+kill_grenade:
+    message_ID = 3
+    message = 0
+    GOSUB send_message
+    RETURN
+
+team_1_grenade:
+    blast_ID = %001111
+    GOSUB send_blast
+    RETURN
+
+team_2_grenade:
+    blast_ID = %011111
+    GOSUB send_blast
+    RETURN
+
+team_3_grenade:
+    blast_ID = %101111
+    GOSUB send_blast
+    RETURN
+
+team_4_grenade:
+    blast_ID = %111111
+    GOSUB send_blast
+    RETURN
+
+stun_grenade:
+    message_ID = 3
+    message = 22
+    GOSUB send_message
+    RETURN
+    
+'------------------------------------------------------
+crazy_grenade:
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+'crazy_first_byte:
+    databyte = 57     		'packet_ID=0 (shot); playerID = 57 (MINE) MT       
+	GoSub send_byte
+
+'crazy_second_byte:
+	databyte = 6			'team 0(NA); damage 15			      
+	GoSub send_byte_short
+	
+	PAUSE 300
+'--------------------	
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+'crazy_first_byte:
+    databyte = 57     		'packet_ID=0 (shot); playerID = 57 (MINE) MT     
+	GoSub send_byte
+
+'crazy_second_byte:
+	databyte = 6			'team 0(NA); damage 15			      
+	GoSub send_byte_short
+	
+	PAUSE 300	
+'--------------------	
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+'crazy_first_byte:
+    databyte = 57     		'packet_ID=0 (shot); playerID = 57 (MINE) MT     
+	GoSub send_byte
+
+'crazy_second_byte:
+	databyte = 15			'team 0(NA); damage 100			      
+	GoSub send_byte_short
+	
+	PAUSE 2000	
+'--------------------	
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+'crazy_first_byte:
+    databyte = 57     		'packet_ID=0 (shot); playerID = 57 (MINE) MT   
+	GoSub send_byte
+
+'crazy_second_byte:
+	databyte = 15			'team 0(NA); damage 100			      
+	GoSub send_byte_short
+	
+	PAUSE 4000	
+'--------------------	
+	CCP1CON = 12				'send MT header pulse (2.4mS)
+    	pauseus mtheader  
+	CCP1CON = 0
+
+'crazy_first_byte:
+    databyte = 57     		'packet_ID=0 (shot); playerID = 57 (MINE) MT     
+	GoSub send_byte
+
+'crazy_second_byte:
+	databyte = 15			'team 0(NA); damage 100			      
+	GoSub send_byte_short
+	
+	RETURN
+'------------------------------------------------------
+'random_health_grenade:
+'    message_ID = 0
+'    message = health
+'    GOSUB send_message
+'    RETURN
+
+'******************************************************
+
+
+	End
+
+
